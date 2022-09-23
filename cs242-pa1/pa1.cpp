@@ -21,7 +21,17 @@
  */
 void inner_product_mmm(float *C, float const *A, float const *B, int M, int N, int K)
 {
-    // Your code here
+    for(int m=0;m<M;m++)
+    {
+        for(int n=0;n<N;n++)
+        {
+            for(int k=0;k<K;k++)
+            {
+                C[m*N+n] = C[m*N+n] + A[m*K+k]*B[k*N+n];
+            }
+        }
+    }
+
 }
 
 /**
@@ -45,5 +55,15 @@ void inner_product_mmm(float *C, float const *A, float const *B, int M, int N, i
  */
 void outer_product_mmm(float *C, float const *A, float const *B, int M, int N, int K)
 {
-    // Your code here
+    for(int k=0;k<K;k++)
+    {
+        for(int m=0;m<M;m++)
+        {
+            for(int n=0;n<N;n++)
+            {
+                C[m*N+n] = C[m*N+n] + A[m*K+k]*B[k*N+n];
+            }
+        }
+    }
+
 }
