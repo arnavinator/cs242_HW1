@@ -34,7 +34,7 @@ pdfproducer={PDFLaTeX},%
 \newcommand{\bigo}[1]{\mathcal{O}\left(#1\right)}
 
 \begin{document}
-\homework{Programming Assignment \uppercase\expandafter{\romannumeral1}}{Due: 09/23/2022 at 11:59PM EST}{Professor H.T. Kung}{}{Name-1, Name-2, Name-3, Name-4}{}{}
+\homework{Programming Assignment \uppercase\expandafter{\romannumeral1}}{Due: 09/23/2022 at 11:59PM EST}{Professor H.T. Kung}{}{Evan Howard, Alexander Johnson, Arnav Srivastava}{}{}
 \textbf{Please include the full names of all team members in your submission.}
 
 \section*{Introduction}
@@ -246,7 +246,7 @@ We will again be using an inner product scheme: completely compute an individual
 \solution{
 \\
 \\
-Let $\frac{N+2}{8}=p$ (so the blocks are $p\times N$/$N\times p$ and the memory capacity is $2pN+1$.) I'm then going to assume N+2 is a multiple of 8 so that p is a valid integer dimension. (It doesn't actually matter what p is if we just want to understand the general idea of what's going on; all that matters is that we're dealing with some valid block size.) Then say $N=p*q+r$ where q and r are integers and $0<r<p$. (I.e. q is the max number of whole factors of p that fit into N, and r is the remainder.) This solution is calculated for the naive algorithm where you simply load a block of A and a block of B, then calculate the corresponding block of C, then load the next block of B (keeping A) and compute the next block of C, and keep going until every block of B has been processed. Then move to the next block of A and do the same thing over again (and so on until completed.) In other words, calculate the result of every 
+Let $\frac{N+2}{8}=p$ (so the blocks are $p\times N$/$N\times p$ and the memory capacity is $2pN+1$.) I'm then going to assume N+2 is a multiple of 8 so that p is a valid integer dimension. (It doesn't actually matter what p is if we just want to understand the general idea of what's going on; all that matters is that we're dealing with some valid block size.) Then say $N=p*q+r$ where q and r are integers and $0\le r<p$. (I.e. q is the max number of whole factors of p that fit into N, and r is the remainder.) This solution is calculated for the naive algorithm where you simply load a block of A and a block of B, then calculate the corresponding block of C, then load the next block of B (keeping A) and compute the next block of C, and keep going until every block of B has been processed. Then move to the next block of A and do the same thing over again (and so on until completed.) In other words, calculate the result of every 
  block of A going into every block of B. The complication in this case is that $q$ of the blocks will be $p\times N$/$N\times p$ but one will be $r\times N$/$N\times r$ (for A and B respectively.)
 \begin{align*} 
 IO & =  \sum_{l=1}^q\bigg[(pN)_{A_{read}[(l-1)p+1:lp][1:N]} + \sum_{k=1}^q \bigg( (Np)_{B_{read}[1:N][(k-1)p+1:kp]} + \sum_{i=(l-1)p+1}^{lp}\sum_{j=(k-1)p+1}^{kp}(1_{C_{read}[i][j]}+1_{C_{write}[i][j]}) \bigg)   \\
@@ -255,18 +255,18 @@ IO & =  \sum_{l=1}^q\bigg[(pN)_{A_{read}[(l-1)p+1:lp][1:N]} + \sum_{k=1}^q \bigg
  (rN)_{A_{read}[qp+1:N][1:N]}
   + \sum_{k=1}^q \bigg( (Np)_{B_{read}[1:N][(k-1)p+1:kp]} + \sum_{i=qp+1}^N\sum_{j=(k-1)p+1}^{kp}(1_{C_{read}[i][j]}+1_{C_{write}[i][j]}) \bigg) 
  \\
-& \;\;\;\;\;\;\;\; +  (Nr)_{B_{read}[1:N][qp+1:N]} + \sum_{i=qp+1}^N \sum_{j=qp+1}^N (1_{C_{read}[i][j]} + 1_{C_{write}[i][j]}) \\
-& = [qpN+q^2Np+q^22p^2+qNr+q2pr]+ [rN+qNp+q2rp] + [Nr+2r^2]  \\
-& = 2Nqp + 2Nr + 2qpr + 2r^2 + Nq^2p + Nqr + 2q^2p^2 + 2qpr\\
-& = 2N(qp+r) + 2r(qp+r) + Nq(qp+r) + 2qp(qp+r)\\
-& = 2N^2+2Nr+N^2q+2Nqp\\
-& = 2N^2 + 2N(qp+r) + N^2q\\
-& = 4N^2 + N^2\bigg\lfloor\frac{N}{p}\bigg\rfloor
+& \;\;\;\;\;\;\;\; +  (Nr)_{B_{read}[1:N][qp+1:N]} + \sum_{i=qp+1}^N \sum_{j=qp+1}^N (1_{C_{read}[i][j]} + 1_{C_{write}[i][j]}) - N^2*[r==0] \\
+& = [qpN+q^2Np+q^22p^2+qNr+q2pr]+ [rN+qNp+q2rp] + [Nr+2r^2]  - N^2*[r==0] \\
+& = 2Nqp + 2Nr + 2qpr + 2r^2 + Nq^2p + Nqr + 2q^2p^2 + 2qpr - N^2*[r==0] \\
+& = 2N(qp+r) + 2r(qp+r) + Nq(qp+r) + 2qp(qp+r) - N^2*[r==0] \\
+& = 2N^2+2Nr+N^2q+2Nqp - N^2*[r==0]\\
+& = 2N^2 + 2N(qp+r) + N^2q - N^2*[r==0]\\
+& = 4N^2 + N^2\bigg\lfloor\frac{N}{p}\bigg\rfloor - N^2*[r==0]
 \end{align*}
 
-Note: by default $r>0$ and so this equation is not valid when $r=0$; in order to make it valid when $r=0$ must subtract $N^2$ whenever $r=0$.
+Note: Because of the form of this equation, there is a cancellation that will not occur when $r=0$. (This will occur when $p=N$ or $p=1$.) To get the correct value in either of these cases we must subtract $N^2$. Using this procedure we will recover the correct results that when $p=1$ the number of IO ops is $IO=N^3+3N^2$ and when $p=N$ (and you can store both matrices) $IO=4N^2$. The need to manually subtract $N^2$ when $r=0$ comes simply because there is a loop in my expression that is necessary for the calculation, but becomes invalid (that is it doesn't contribute) when r=0.  
 
-$$ \alpha = \frac{2N^3}{IO} = \frac{2N^3}{4N^2 + N^2\bigg\lfloor\frac{N}{p}\bigg\rfloor} = \frac{2N}{4+\bigg\lfloor\frac{N}{p}\bigg\rfloor}$$
+$$ \alpha = \frac{2N^3}{IO} = \frac{2N^3}{4N^2 + N^2\bigg\lfloor\frac{N}{p}\bigg\rfloor - N^2*[r==0]} = \frac{2N}{4+\bigg\lfloor\frac{N}{p}\bigg\rfloor - N^2*[r==0]}$$
 
 }
 
@@ -319,12 +319,15 @@ That is, by what factor do the arithmetic intensity of inner and outer product M
 
 \solution{ 
 
-For both 3.1 and 3.3 the arithmetic intensity is $\alpha=\frac{3}{2}$. This means that the inner and outer product have the same $\alpha$ (for the algorithms chosen) when the local memory is big enough to hold one of the product matrices, an entire row/vector of the other matrix, and atleast one elemnt of C. 
+For both 3.1 and 3.3 the arithmetic intensity is $\alpha=\frac{3}{2}$. This means that the inner and outer product have the same $\alpha$ (for the algorithms chosen) when the local memory is big enough to hold one of the product matrices, an entire row/vector of the other matrix, and atleast one element of C. 
 
-Now comparing 3.2 and 3.4 we see the arithmetic intensities are $\alpha=\frac{N}{4+\big\lfloor\frac{N}{p}\big\rfloor}$ and $\alpha=\frac{N}{3}$ respectively. The floor function in the expression for 3.2 is saying that increasing the block size $p$ only helps the arithmetic intensity when it decreases the total number of blocks that have to be loaded, and this only happens when the block-size $p$ hits the next-biggest factor of N as it increases. 
+Now comparing 3.2 and 3.4 we see the arithmetic intensities are $\alpha=\frac{N}{4+\big\lfloor\frac{N}{p}\big\rfloor- N^2*[r==0]}$ and $\alpha=\frac{N}{3}$ respectively. The floor function in the expression for 3.2 is saying that increasing the block size $p$ only helps the arithmetic intensity when it decreases the total number of blocks that have to be loaded, and this only happens when the block-size $p$ hits the next-biggest factor of N as it increases. 
 
 These two results in conjunction are saying that when memory is only big enough to hold a subset of the matrices, the outer-product does better. This is because the outer product does not require as many accesses to C. 
-This can be seen by setting $p=\frac{N+2}{8}$ and seeing that $\alpha$ for 3.2 becomes $\alpha=\frac{N}{4+\big\lfloor\frac{8N}{N+2}\big\rfloor}$}. Note that  $\frac{8N}{N+2}$ is larger than 2 for any valid values of N (6, 14, 22,...) and so see that with the same memory the inner product doesn't have as high of an arithmetic intensity. This would be clearer if I had also derived the general expression for the outer-product in terms of a block size $p$. 
+This can be seen by setting $p=\frac{N+2}{8}$ and seeing that $\alpha$ for 3.2 becomes $\alpha=\frac{N}{4+\big\lfloor\frac{8N}{N+2}\big\rfloor- N^2*[r==0]}$. 
+
+Note that  $\frac{8N}{N+2}$ is larger than 2 for any N (6, 14, 22,...) such that N+2 is a multiple of 8, and so see that with the same memory the inner product doesn't have as high of an arithmetic intensity. This would be clearer if I had also derived the general expression for the outer-product in terms of a block size $p$. 
+}
 
 \section{MMM Runtimes}
 \label{sec:eval}
@@ -377,7 +380,17 @@ For plotting, use Python’s \texttt{matplotlib}.
 What trends do you see?
 Does anything stand out or seem unusual?
 
-\solution{}
+\solution{
+
+\begin{figure}[H]
+    \includegraphics[width=0.85\linewidth]{figures/time_vs_size.png}
+    \centering
+    \caption{Timings for Part 4}
+\end{figure}
+
+We firstly see that the execution time grows  with respect to matrix size N. We also notice that the inner product times are offset by a constant (in log space) from the outer product times; this shows the relative in-efficiency of inner product MMM vs outer-product MMM, especially as the matrix size increases.   
+
+}
 
 \section{Arithmetic Intensity for Convolution}
 \label{sec:cnn_ai}
@@ -408,19 +421,59 @@ The above process is illustrated in Figure~\ref{fig:conv}.
     \item Calculate the IO required for the input matrix, assuming that the local memory can hold the entire matrix.
 \end{enumerate}
 
-\solution{}
+\solution{
+
+For this problem I'm assuming that we're talking about the IO necessary to form the data and filter matrices from their respective tensors. 
+
+\newcommand{\numpatches}{\bigg(\bigg\lceil\frac{W-K}{S}\bigg\rceil+1\bigg)\bigg(\bigg\lceil\frac{H-K}{S}\bigg\rceil+1\bigg)}
+
+\begin{enumerate}
+\item[a).] I'm assuming the simplest case, where the entire filter matrix is in local memory and the set of filters are in some external memory. The number of IO operations in this case is simply the number of elements that have to be read, which is: $$IO = IK^2*O$$
+\item[b).] In this case I'm assuming the data matrix and a single variable are in local memory and the data tensor is on disk. I'm also assuming the best case where we're smart enough to read a single element of the data tensor into a local variable and then copy it to all the places where we know it will show up in the linearized data matrix. This way we only need to read each element of the data tensor once and the total IO is just the size of the data tensor which is: $$IO=\numpatches*IK^2 $$
+To obtain this size for the data tensor, I assumed that the convolution will do an additional shift even if the remaining number of un-convolved elements in a given direction is less than S. This is what gives the ceil functions.  
+\end{enumerate}
+
+}
 
 \problem{5.2}{5}
 What is the arithmetic intensity for the matrix multiplication between the data matrix and the filter matrix?
 
-\solution{}
+\solution{
+\newcommand{\numpatches}{\big(\big\lceil\frac{W-K}{S}\big\rceil+1\big)\big(\big\lceil\frac{H-K}{S}\big\rceil+1\big)}
+
+I'm assuming that we can fit the entire result matrix, a row of the filter matrix and an element of the data matrix in memory. We then do the most direct outer-product matrix multiplication. (I'm also including the IO to write the result to disk as part of the calculation.) 
+
+\begin{align} 
+\alpha & = \frac{2O \numpatches * IK^2}{ IK^2\big(O +\numpatches\big) + O\numpatches } \\
+       & = \frac{2O P IK^2}{IK^2(O+P) + OP}\\
+\end{align}
+where $P = num patches = \numpatches $
+}
 
 \problem{5.3}{5}
 How does arithmetic intensity vary with: kernel size ($K$), input channel size ($I$), and stride ($S$)?
 Use one or two sentences to describe the trends for each.
 Comment on any relationship you notice between $K$ and $S$.
 You may find graphs or equations useful in justifying your answer.
-\solution{}
+
+\solution{
+
+\begin{figure}[H]
+    \includegraphics[width=0.95\linewidth]{figures/alpha.png}
+    \centering
+    \caption{$\alpha$ for Part 5}
+\end{figure}
+
+Understanding these results requires remembering that increased $\alpha$ is not the same as decreased absolute computation time. 
+
+At small K, $\alpha$ is large and as K increase $\alpha$ slowly decreases. This makes intuitive sense as a small K corresponds to a smaller filter matrix to load, but a much larger amount of computations because the much bigger size of the data matrix. Also note the discrete downward jumps in $\alpha$ as K increases. These correspond to the fact that increasing K only changes the number of patches when K causes one less factor of S to fit into the matrix at which point the number of convolution patches jumps down and $\alpha$ decreases. 
+
+The channel size I has a large effect on $\alpha$ at small K. Here, larger I corresponds to a larger computational intensity because the increased number of computations outweights the increased amount of IO. We can see this should be true because I multiplies O*P in the numerator but O and P individually in the denominator. However, as K increases the effect of I is diminished.
+
+Lower stride corresponds to greater arithmetic intensity because once again, the effect of lowering the stride is to increase the number computations more quickly than the number of IO operations. 
+
+As stated before, the clear relationship between K and S is that changing the size of K has a bigger impact every time it causes one factor less of S to fit into a dimension of the data matrix. They also both have the same effect on $\alpha$ and increasing S amplifies the importance of changes in K. 
+}
 
 
 \section{What to Submit}
