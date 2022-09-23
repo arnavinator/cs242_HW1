@@ -1,0 +1,447 @@
+\documentclass[a4 paper]{article}
+% Set target color model to RGB
+\usepackage[inner=2.0cm,outer=2.0cm,top=2.5cm,bottom=2.5cm]{geometry}
+\usepackage{setspace}
+\usepackage[rgb]{xcolor}
+\usepackage{verbatim}
+\usepackage{subcaption}
+\usepackage{amsgen,amsmath,amstext,amsbsy,amsopn,tikz,amssymb}
+\usepackage{fancyhdr}
+\usepackage[colorlinks=true, urlcolor=blue,  linkcolor=blue, citecolor=blue]{hyperref}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage{rotating}
+\usepackage[ruled, vlined, noend]{algorithm2e}
+\usepackage{wrapfig}
+\usepackage{enumitem}
+\usepackage[nameinlink]{cleveref}
+
+
+\usepackage{minted}
+\usemintedstyle{vs}
+\hypersetup{%
+pdfauthor={CS242},%
+pdftitle={CS242 Programming Assignment},%
+pdfkeywords={CS242},%
+pdfcreator={PDFLaTeX},%
+pdfproducer={PDFLaTeX},%
+}
+
+\usepackage{booktabs}
+\input{macros.tex}
+\newcommand{\pya}[1]{\mintinline{python}{#1}}
+
+\newcommand{\bigO}[1]{$\mathcal{O}(#1)$}
+\newcommand{\bigo}[1]{\mathcal{O}\left(#1\right)}
+
+\begin{document}
+\homework{Programming Assignment \uppercase\expandafter{\romannumeral1}}{Due: 09/23/2022 at 11:59PM EST}{Professor H.T. Kung}{}{Name-1, Name-2, Name-3, Name-4}{}{}
+\textbf{Please include the full names of all team members in your submission.}
+
+\section*{Introduction}
+\subsection*{Assignment Objectives}
+The objectives of this assignment are to:
+\begin{itemize}
+    \item Introduce the concept of data reuse strategies when performing computations from within a memory hierarchy. 
+    \item Illustrate how outer products can be more efficient for matrix-matrix multiplication (MMM) than inner products.
+    \item Demonstrate how arithmetic intensity can affect runtime. 
+\end{itemize}
+
+\subsection*{Assignment Tasks Overview}
+\begin{itemize}
+    \item Task 1: Compute the arithmetic intensity for a single inner product given different local memory sizes (Part \ref{sec:ip_ai}).
+    \item Task 2: Compute the arithmetic intensity for a single outer product given different local memory sizes (Part \ref{sec:op_ai}).
+    \item Task 3: Compare the arithmetic intensity for inner- and outer-product-based MMM given different local memory sizes (Part \ref{sec:MMM_ai}).
+    \item Task 4: Empirical runtime comparison of outer and inner- and outer-product-based MMM (Part \ref{sec:eval}).
+    \item Task 5: Compute the arithmetic intensity for convolution under different parameter settings (Part \ref{sec:cnn_ai}).
+\end{itemize}
+
+\subsection*{Virtual Machine Setup}
+Please see \href{https://docs.google.com/document/d/1wXvE_RUMUZW1irqC1lGUFZ5nWO1lH-PKTWoI6a6fuq0/edit?usp=sharing}{Google Doc} for instructions for setting up the provided virtual machine (VM).
+
+\subsection*{Refresher}
+\subsubsection*{Matrix-Matrix Multiplication}
+We define matrix-matrix multiplication (MMM) as $C = C + A \times B$, where $A$ and $B$ are input matrices of size $M \times K$ and $K \times N$, respectively, and $C$ is the $M \times N$ result matrix.
+Keep in mind that $C$ being both an input and output means elements of $C$ must be \textbf{read from the external memory} into the local memory first before being used and then written back.
+For simplicity, we assume square matrices throughout this assignment (i.e., $M = N = K$). 
+However, concepts and methods learned from this assignment generalize to non-square matrices.
+As discussed in lecture, MMM is a fundamental operation underlying many machine learning computations. 
+
+\subsubsection*{Arithmetic Intensity}
+Arithmetic intensity ($\alpha$) is the ratio of arithmetic operations performed (or \# ops) to number of memory accesses (IO):
+\[
+\alpha = \frac{\#\text{ ops}}{\text{IO}}
+\]
+Note: we will consider IO in units of 4-byte elements (i.e., 32-bit floating point numbers).
+Arithmetic intensity is an important metric because it captures how much computation may be done for each memory access.
+We prefer algorithms with a high arithmetic intensity in order to minimize the IO for the same number of operations performed.
+
+For our analysis, \textbf{individual reads and writes to external memory are considered separate IO operations}.
+\textbf{Only values that are updated need to be written back}, and \textbf{initializing a value in local memory does not require an IO operation}. 
+We treat multiply-accumulates (MACs) as \textbf{two operations} (i.e., one multiplication followed by one addition, including the initial accumulation with 0 for a dot-product computation):
+\[
+ z \leftarrow z + x \cdot y \text{ means } \texttt{z += x * y (C++ code)}
+\]
+
+\subsubsection*{Memory Hierarchy and Computation from Local Memory}
+For simplicity, we will assume a simple memory hierarchy with 2 levels: a \textbf{fast} local SRAM and a \textbf{slow} external DRAM.
+We will also assume the local memory (SRAM) is entirely user-managed (i.e., the memory does not have a built-in eviction policy).
+That is, we can specify what data is held, for whatever length of time, so long as there is sufficient memory capacity.
+
+Computations may only be performed directly on data stored in local memory, so operands (inputs and outputs to be used or written back) must be located in the local SRAM (and not the external DRAM).
+For any algorithm, final results must be written back to the slower external memory (DRAM), but intermediate values can be either held in faster memory or written back to slower memory.
+
+\subsubsection*{Example: Arithmetic Intensity for Incrementing All Elements of a Vector by 1}
+In the next section, we will be asking you to derive the arithmetic intensity for certain algorithms.
+For each question, clearly state \textbf{where data is being moved} to/from as well as \textbf{when the data is being moved} (i.e., the order of data movement).
+Describe any additional assumptions you make.
+To simplify analysis, you may express the arithmetic intensity in terms of $N$.
+
+Here is an example of how to calculate the arithmetic intensity for the following algorithm when local memory can hold only $\frac{N}{2}$ elements:\\
+\begin{algorithm}[H]
+\SetAlgoLined
+\SetInd{0.25em}{0.5em}
+\tcp{$a$ is a vector with $N$ elements}
+\For{$n = 1 \to N$}{
+    $a[n] \longleftarrow a[n] + 1$;
+}
+\caption{Vector increment}
+\label{algo:vector_increment}
+\end{algorithm}
+
+We start by reading in the first $\frac{N}{2}$ elements of $a$ from slow external memory into local memory.
+Next, we add 1 to the value of each element in local memory, and then write them back to external memory.
+We repeat this for the last $\frac{N}{2}$ elements of $a$.
+In total, we read $N$ elements from external memory and write back $N$ elements to external memory, and perform $N$ additions.
+That is, we have $2N$ accesses to slow memory and $N$ operations.
+As a result, our arithmetic intensity is:
+\[
+\alpha = \frac{N}{2N} = \frac{1}{2}
+\]
+
+\noindent
+
+\newpage
+\section{Arithmetic Intensity for Inner Product}
+\label{sec:ip_ai}
+An inner product (also called a dot product) between $a$ and $b$, two $N$-dimension vectors  with $a$ being a row vector and $b$ a column vector, will result in a single element, as computed by the following algorithm:
+
+\begin{algorithm}
+\SetAlgoLined
+\SetInd{0.25em}{0.5em}
+$sum \longleftarrow 0$;
+\For{$n = 1 \to N$}{
+    $sum \longleftarrow sum + a[n] \cdot b[n]$\;
+}
+\Return $sum$
+\caption{Inner Product of Two Vectors}
+\label{algo:inner-product}
+\end{algorithm}
+
+\problem{1.1}{5}
+Calculate arithmetic intensity for the inner product computation (\Cref{algo:inner-product}) when local memory can hold 3 elements for the scheme where we keep $sum$, a single element of $a$, and a single element of $b$ in memory.
+Reminder: initializing $sum$ does not require reading from external memory, but the final result must be written back to external memory!
+
+\solution{$$\alpha = \frac{N+N}{\sum_{i=1}^N1 \; + \; \sum_{i=1}^N1 \; + \;1} = \frac{2N}{2N+1} $$}
+
+\problem{1.2}{5}
+Calculate arithmetic intensity for the inner product when local memory can hold $\frac{N}{2} + 2$ elements.
+(Hint: start by bringing in the first half of $b$.)
+
+
+\solution{$$\alpha = \frac{N+N}{\frac{N}{2}+\sum_{i=1}^{\frac{N}{2}}1+\frac{N}{2}+\sum_{i=1}^{\frac{N}{2}}1 + 1} = \frac{2N}{2N+1} $$}
+
+\problem{1.3}{5}
+Calculate arithmetic intensity for the inner product when local memory can hold $2N + 1$ elements.
+
+\solution{$$ \alpha = \frac{N+N}{N+N+1} = \frac{2N}{2N+1}$$}
+
+\section{Arithmetic Intensity for Outer Product}
+\label{sec:op_ai}
+An outer product between two $N$-dimension vectors $a$ and $b$, where $a$ is a column vector and $b$ is a row vector, will result in an $N \times N$ matrix $C$.
+$C = a \times b$ is computed by the following algorithm:
+
+\begin{algorithm}
+\SetAlgoLined
+\SetInd{0.25em}{0.5em}
+\For{$m = 1 \to N$}{
+    \For{$n = 1 \to N$}{
+        $C[m][n] \longleftarrow a[m] \cdot b[n]$;
+    }
+}
+\caption{Outer Product on a Pair of Vectors}
+\label{algo:outer-product}
+\end{algorithm}
+\noindent
+Note: when computing only a single outer product, $C$ does not need to be fetched from external memory.
+We are only writing out values, \textbf{not} updating pre-existing ones.
+
+\problem{2.1}{5}
+Calculate the arithmetic intensity for the outer product computation (\Cref{algo:outer-product}) when local memory can hold 3 elements for the scheme where we hold a single element of $A$, $B$, and $C$ at a time.
+
+\solution{
+\\
+\\
+Note: the notation $1_{expr}$ is intended to represent a single access resulting from $expr$. So for example, $1_{a[m]}$ represents a single access of $a[m]$. Mathematically the value of $1_{expr}$ is just 1. 
+$$\alpha = \frac{N^2}{\sum_{m=1}^N\sum_{n=1}^N 1_{b[n]} + \sum_{m=1}^N 1_{a[m]} + \sum_{m=1}^N\sum_{n=1}^N 1_{C[m][n]} } = \frac{N^2}{2N^2+N} $$}
+
+\problem{2.2}{5}
+Calculate the arithmetic intensity for the outer product when local memory can hold $\frac{N}{2} + 2$ elements, using the scheme where we hold half of $B$, and a single element of $A$ and $C$ in memory.
+
+\solution{
+\\
+\\
+Note: $\frac{N}{2}_{b[(k-1)\frac{N}{2}+1:k\frac{N}{2}]}$ represents $\frac{N}{2}$ accesses resulting from reading $\frac{N}{2}$ elements of b.
+$$ \alpha = \frac{N^2}{ \sum_{k=1}^2(\frac{N}{2}_{b[(k-1)\frac{N}{2}+1:k\frac{N}{2}]} + \sum_{m=1}^N  (1_{a[m]} + \sum_{i=(k-1)\frac{N}{2}+1}^{\frac{N}{2}k} 1_{C[m][i]}) )} = \frac{N^2}{N^2+3N} $$}
+
+\problem{2.3}{5}
+Calculate the arithmetic intensity for the outer product when local memory can hold $2N + 1$ elements, using the scheme where we hold $A$ and $B$ in local memory and write the computed $C$ to external memory.
+
+\solution{
+\\
+\\
+Note: 2N represnts 2N accesses resulting from reading a and b.
+$$  \alpha = \frac{N^2}{2N+\sum_{m=1}^N\sum_{n=1}^N 1_{C[m][n]}} = \frac{N^2}{N^2+2N} $$}
+
+
+\section{Arithmetic Intensity for Inner and Outer Product MMM}
+\label{sec:MMM_ai}
+In this section you will calculate the arithmetic intensity of MMM ($C = C + A \times B$) using inner products and outer products. 
+In \Cref{fig:innermm} and \Cref{fig:outermm}, we provide examples of which portions of $A$, $B$, $C$ are held in local memory (gray) for inner and outer products.
+As a reminder, we assume $C$ must first be read from external memory before being updated, as defined previously.
+Each element of $C$ must also be written back to external memory once computations are complete.
+
+\subsection*{Arithmetic Intensity for Inner Products}
+\begin{figure}[H]
+\centering
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[scale=1]{figures/inner_mmm_n2.png}
+  \caption{Local memory size $N^2 + N + 1$}
+  \label{fig:innermm_n2}
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[scale=1]{figures/inner_mmm_n2_4.png}
+  \caption{Local memory size  $\frac{N^2}{4} + \frac{N}{2} + 1$}
+  \label{fig:innermm_n2_4}
+\end{subfigure}
+\caption{Inner product MMM from local memory of two sizes.}
+\label{fig:innermm}
+\end{figure}
+\problem{3.1}{5}
+Calculate the arithmetic intensity of MMM with inner products when local memory can hold $N^2 + N + 1$ for the scheme where all of $B$, a vector of $A$, and a single element of $C$ (which is being computed) are held in local memory at any time (\Cref{fig:innermm_n2}).
+Here we use an inner product scheme: we will entirely compute an individual element of $C$ before moving to the next.
+
+\solution{
+
+$$ \alpha = \frac{(N+(N-1)+1)N^2}{N^2_{B_{read}}+\sum_{m=1}^N(N_{A_{read}[m][1:N]}+\sum_{n=1}^N(1_{C_{read}[m][n]}+1_{C_{write}[m][n]}) ))} = \frac{2N^3}{4N^2} = \frac{N}{2}$$
+
+}
+
+\problem{3.2}{5}
+Calculate the arithmetic intensity of MMM with inner products when local memory can hold $\frac{N^2}{4} + \frac{N}{2} + 1$ for the scheme where $\frac{N+2}{8} \times N$ submatrices of $A$, $N \times \frac{N+2}{8}$ submatrices of $B$, and a single element of $C$ (which is being computed) are held in local memory at any time (\Cref{fig:innermm_n2_4}).
+We will again be using an inner product scheme: completely compute an individual element of $C$ before moving to the next.
+
+
+\solution{
+\\
+\\
+Let $\frac{N+2}{8}=p$ (so the blocks are $p\times N$/$N\times p$ and the memory capacity is $2pN+1$.) I'm then going to assume N+2 is a multiple of 8 so that p is a valid integer dimension. (It doesn't actually matter what p is if we just want to understand the general idea of what's going on; all that matters is that we're dealing with some valid block size.) Then say $N=p*q+r$ where q and r are integers and $0<r<p$. (I.e. q is the max number of whole factors of p that fit into N, and r is the remainder.) This solution is calculated for the naive algorithm where you simply load a block of A and a block of B, then calculate the corresponding block of C, then load the next block of B (keeping A) and compute the next block of C, and keep going until every block of B has been processed. Then move to the next block of A and do the same thing over again (and so on until completed.) In other words, calculate the result of every 
+ block of A going into every block of B. The complication in this case is that $q$ of the blocks will be $p\times N$/$N\times p$ but one will be $r\times N$/$N\times r$ (for A and B respectively.)
+\begin{align*} 
+IO & =  \sum_{l=1}^q\bigg[(pN)_{A_{read}[(l-1)p+1:lp][1:N]} + \sum_{k=1}^q \bigg( (Np)_{B_{read}[1:N][(k-1)p+1:kp]} + \sum_{i=(l-1)p+1}^{lp}\sum_{j=(k-1)p+1}^{kp}(1_{C_{read}[i][j]}+1_{C_{write}[i][j]}) \bigg)   \\
+& \;\;\;\;\;\;\;\;\;\;\;\;  + (Nr)_{B_{read}[1:N][qp+1:N]} + \sum_{i=(l-1)p+1}^{lp}\sum_{j=qp+1}^N(1_{C_{read}[i][j]}+1_{C_{write}[i][j]}) \bigg] \\
+ & \;\;\;\;\;\;\;\; +
+ (rN)_{A_{read}[qp+1:N][1:N]}
+  + \sum_{k=1}^q \bigg( (Np)_{B_{read}[1:N][(k-1)p+1:kp]} + \sum_{i=qp+1}^N\sum_{j=(k-1)p+1}^{kp}(1_{C_{read}[i][j]}+1_{C_{write}[i][j]}) \bigg) 
+ \\
+& \;\;\;\;\;\;\;\; +  (Nr)_{B_{read}[1:N][qp+1:N]} + \sum_{i=qp+1}^N \sum_{j=qp+1}^N (1_{C_{read}[i][j]} + 1_{C_{write}[i][j]}) \\
+& = [qpN+q^2Np+q^22p^2+qNr+q2pr]+ [rN+qNp+q2rp] + [Nr+2r^2]  \\
+& = 2Nqp + 2Nr + 2qpr + 2r^2 + Nq^2p + Nqr + 2q^2p^2 + 2qpr\\
+& = 2N(qp+r) + 2r(qp+r) + Nq(qp+r) + 2qp(qp+r)\\
+& = 2N^2+2Nr+N^2q+2Nqp\\
+& = 2N^2 + 2N(qp+r) + N^2q\\
+& = 4N^2 + N^2\bigg\lfloor\frac{N}{p}\bigg\rfloor
+\end{align*}
+
+Note: by default $r>0$ and so this equation is not valid when $r=0$; in order to make it valid when $r=0$ must subtract $N^2$ whenever $r=0$.
+
+$$ \alpha = \frac{2N^3}{IO} = \frac{2N^3}{4N^2 + N^2\bigg\lfloor\frac{N}{p}\bigg\rfloor} = \frac{2N}{4+\bigg\lfloor\frac{N}{p}\bigg\rfloor}$$
+
+}
+
+\subsection*{Arithmetic Intensity for Outer Product MMM}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[scale=1]{figures/outer_mmm_n2.png}
+  \caption{Local memory size $N^2 + N + 1$}
+  \label{fig:outermm_n2}
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[scale=1]{figures/outer_mmm_n2_4.png}
+  \caption{Local memory size  $\frac{N^2}{4} + \frac{N}{2} + 1$}
+  \label{fig:outermm_n2_4}
+\end{subfigure}
+\caption{Outer product MMM from local memory of two sizes}
+\label{fig:outermm}
+\end{figure}
+
+
+\problem{3.3}{5}
+Calculate the arithmetic intensity of MMM with outer products when local memory can hold $N^2+N +1$ for the scheme where all of $C$, a row of $B$, and a single element of $A$ is held in local memory at any time (\Cref{fig:outermm_n2}).
+
+\solution{
+
+$$\alpha = \frac{(N^2+N^2)N}{N^2_{C_{read}} + \sum_{i=1}^N \big( N_{B_{read}[i][1:N]} +\sum_{j=1}^N 1_{A_{read}[j][i]} \big) + N^2_{C_{write}} } = \frac{2N^3}{4N^2} = \frac{N}{2} $$
+}
+
+\problem{3.4}{5}
+Calculate the arithmetic intensity of MMM with outer products when local memory can hold $\frac{N^2}{4} + \frac{N}{2} + 1$ for the scheme where we hold a $\frac{N^2}{4}$ block of $C$, a half row of $B$ ($\frac{N}{2}$ elements), and a single element of $A$ in local memory at any time (\Cref{fig:outermm_n2_4}).
+Here we use an IO-efficient scheme: we will finish computing an entire $\frac{N}{2} \times \frac{N}{2}$ submatrix of $C$ before writing it back to external memory and starting on the next sub-matrix.
+
+\solution{
+$$ \alpha = \frac{4((\frac{N}{2})^2 + (\frac{N}{2})^2)N} { \sum_{j=1}^4\bigg(
+2(\frac{N}{2})^2_{C_{read}} + \sum_{k=1}^N \big(\frac{N}{2}_{B_{read}} + \sum_{l=1}^{\frac{N}{2}} 1_{A_{read}} \big)
+ \bigg)} = \frac{2N^3}{4(\frac{3}{2}N^2)}
+= \frac{N}{3} $$
+
+}
+
+
+\subsection*{Comparison of Inner and Outer Products}
+\problem{3.5}{5}
+Compare your results from Parts 3.1 to 3.3 (inner vs outer product with larger local memory), and your results from Parts 3.2 with 3.4 (inner vs outer product with smaller local memory).
+That is, by what factor do the arithmetic intensity of inner and outer product MMMs differ at each memory size?
+
+\solution{ 
+
+For both 3.1 and 3.3 the arithmetic intensity is $\alpha=\frac{3}{2}$. This means that the inner and outer product have the same $\alpha$ (for the algorithms chosen) when the local memory is big enough to hold one of the product matrices, an entire row/vector of the other matrix, and atleast one elemnt of C. 
+
+Now comparing 3.2 and 3.4 we see the arithmetic intensities are $\alpha=\frac{N}{4+\big\lfloor\frac{N}{p}\big\rfloor}$ and $\alpha=\frac{N}{3}$ respectively. The floor function in the expression for 3.2 is saying that increasing the block size $p$ only helps the arithmetic intensity when it decreases the total number of blocks that have to be loaded, and this only happens when the block-size $p$ hits the next-biggest factor of N as it increases. 
+
+These two results in conjunction are saying that when memory is only big enough to hold a subset of the matrices, the outer-product does better. This is because the outer product does not require as many accesses to C. 
+This can be seen by setting $p=\frac{N+2}{8}$ and seeing that $\alpha$ for 3.2 becomes $\alpha=\frac{N}{4+\big\lfloor\frac{8N}{N+2}\big\rfloor}$}. Note that  $\frac{8N}{N+2}$ is larger than 2 for any valid values of N (6, 14, 22,...) and so see that with the same memory the inner product doesn't have as high of an arithmetic intensity. This would be clearer if I had also derived the general expression for the outer-product in terms of a block size $p$. 
+
+\section{MMM Runtimes}
+\label{sec:eval}
+In this section you will implement MMM with both inner and outer products, execute the code on your VM and report their runtimes.
+
+\subsection*{Implementing Inner Product MMM}
+\problem{4.1}{10}
+Implement inner product MMM in the function \texttt{inner\_product\_mmm()} contained in \texttt{pa1.cpp}, as described by the following algorithm:
+\begin{algorithm}
+\SetAlgoLined
+\SetInd{0.25em}{0.5em}
+\For{$m = 1 \to M$}{
+    \For{$n = 1 \to N$}{
+        \For{$k = 1 \to K$}{
+            $C[m][n] \longleftarrow C[m][n] + A[m][k] \cdot B[k][n]$\;
+        }
+    }
+}
+\caption{Inner product MMM}
+\label{algo:naivemm-mnk}
+\end{algorithm}
+
+\subsection*{Implementing Outer Product MMM}
+\problem{4.2}{10}
+Implement outer product MMM in the function \texttt{outer\_product\_mmm()} contained in \texttt{pa1.cpp}, as described by the following algorithm:
+
+\begin{algorithm}[H]
+\SetAlgoLined
+\SetInd{0.25em}{0.5em}
+\For{$k = 1 \to K$}{
+    \For{$m = 1 \to M$}{
+        \For{$n = 1 \to N$}{
+            $C[m][n] \longleftarrow C[m][n] + A[m][k] \cdot B[k][n]$\;
+        }
+    }
+}
+\caption{Outer product MMM}
+\label{algo:naivemm-kmn}
+\end{algorithm}
+
+\subsection*{Timing}
+\problem{4.3}{15}
+With your implementation of the MMM functions, run the provided code.
+Plot the run time results, taking the average over 5 iterations.
+As mentioned earlier, use only square matrices (i.e., $M = N = K$) to simplify timing comparisons.
+The Y-axis should be the run time (in nanoseconds) and X-axis should be the matrix dimension $N$.
+Be sure to appropriately label your generated plot with axes, title, and legend.
+Your plot must include data for following values of $N$: 16, 32, 64, 128, 256, 512, 1024 (every power of 2 between $2^4$ and $2^{10}$, inclusive).
+For plotting, use Python’s \texttt{matplotlib}.
+What trends do you see?
+Does anything stand out or seem unusual?
+
+\solution{}
+
+\section{Arithmetic Intensity for Convolution}
+\label{sec:cnn_ai}
+In this section, we will explore the arithmetic intensity of a convolutional layer.
+A convolutional layer may be implemented as a matrix-matrix multiplication (MMM) by linearizing the input data tensor and filters into two matrices, respectively. 
+For such an implementation, we define the arithmetic intensity of the convolutional layer as the arithmetic intensity of its corresponding MMM.
+
+The size of input data tensor is given as ($I, H, W$), where $I$ is number of input channels, and $H$ and $W$ are the spatial sizes (height and width) of the data tensor. 
+The filter tensor of the convolution layers have a size of ($O, I, K, K$), where $O$ is the number of output channels and $K$ is kernel size.
+To linearize the data tensor into a data matrix, we first sample several patches from the data tensor with a sampling stride\footnote{The stride is the number of pixels that the filters move on each iteration.} $S$.
+Each patch has a size of ($I, K, K$) and is unfolded as a row of the linearized data matrix. 
+Note that these patches may overlap one another depending on the kernel size $K \times K$ and stride $S$. 
+The size of $S$ is important for determining the size of the linearized data matrix.
+Similarly, each filter also has a size of ($I, K, K$) and is unfolded as a column of the linearized filter matrix.
+Finally, this convolution layer can be implemented as a matrix-matrix multiplication between the linearized data and filter matrices.
+The above process is illustrated in Figure~\ref{fig:conv}.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{figures/CS242-Conv.pdf}
+    \caption{Overview of a convolution and it's corresponding matrices.}
+    \label{fig:conv}
+\end{figure}
+
+\problem{5.1}{5}
+\begin{enumerate}[label=(\alph*)]
+    \item Calculate the IO required for the filter matrix, assuming that the local memory can hold the entire matrix.
+    \item Calculate the IO required for the input matrix, assuming that the local memory can hold the entire matrix.
+\end{enumerate}
+
+\solution{}
+
+\problem{5.2}{5}
+What is the arithmetic intensity for the matrix multiplication between the data matrix and the filter matrix?
+
+\solution{}
+
+\problem{5.3}{5}
+How does arithmetic intensity vary with: kernel size ($K$), input channel size ($I$), and stride ($S$)?
+Use one or two sentences to describe the trends for each.
+Comment on any relationship you notice between $K$ and $S$.
+You may find graphs or equations useful in justifying your answer.
+\solution{}
+
+
+\section{What to Submit}
+Your submission should be a \texttt{.zip} archive with a \texttt{CS242\_PA\_} prefix followed by each team member's full name separated with two underscores from the next name. The archive should contain:
+\begin{itemize}
+    \item PDF write-up
+    \item Assignment code
+\end{itemize}
+
+\noindent
+Example filename: \texttt{CS242\_PA1\_Jane\_Doe\_\_John\_Doe\_\_Jane\_Smith\_\_John-Paul\_Smith.zip}\\
+
+\subsection*{Write-up}
+Written responses should be contained within a single PDF document.
+(\LaTeX~is highly recommended!)
+Each response or figure should clearly indicate which problem is being answered.
+The write-up must contain the full names of all team members.
+
+\subsection*{Code}
+You should include \textbf{all} files that were provided, but with the changes you made.
+Additionally, you must include your graphing code and timing data for Part 4.3.
+
+
+\end{document} 
