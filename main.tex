@@ -487,7 +487,7 @@ Understanding these results requires remembering that increased $\alpha$ is not 
 
 At small K, $\alpha$ is large and as K increases $\alpha$ decreases. This makes intuitive sense as a small K corresponds to a smaller filter matrix to load, but a much larger amount of computations because the much bigger size of the data matrix. Also note the discrete downward jumps in $\alpha$ as K increases. These correspond to the fact that increasing K only changes the number of patches when K causes one less factor of S to fit into the matrix at which point the number of convolution patches jumps down and $\alpha$ decreases. 
 
-The channel size I has a large effect on $\alpha$ at small K. Here, larger I corresponds to a larger computational intensity because the increased number of computations outweights the increased amount of IO. We can see this should be true because I multiplies O*P in the numerator but O and P individually in the denominator. However, as K increases the effect of I is diminished.
+The channel size I has a large effect on $\alpha$ at small K. Here, larger I corresponds to a larger computational intensity because the increased number of computations outweighs the increased amount of IO. We can see this should be true because I multiplies O*P in the numerator but O and P individually in the denominator. However, as K increases the effect of I is diminished.
 
 Lower stride corresponds to greater arithmetic intensity because once again, the effect of lowering the stride is to increase the number computations more quickly than the number of IO operations. 
 
