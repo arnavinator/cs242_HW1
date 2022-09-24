@@ -264,9 +264,9 @@ IO & =  \sum_{l=1}^q\bigg[(pN)_{A_{read}[(l-1)p+1:lp][1:N]} + \sum_{k=1}^q \bigg
 & = 4N^2 + N^2\bigg\lfloor\frac{N}{p}\bigg\rfloor - N^2*[r==0]
 \end{align*}
 
-Note: Because of the form of this equation, there is a cancellation that will not occur when $r=0$. (This will occur when $p=N$ or $p=1$.) To get the correct value in either of these cases we must subtract $N^2$. Using this procedure we will recover the correct results that when $p=1$ the number of IO ops is $IO=N^3+3N^2$ and when $p=N$ (and you can store both matrices) $IO=4N^2$. The need to manually subtract $N^2$ when $r=0$ comes simply because there is a loop in my expression that is necessary for the calculation, but becomes invalid (that is it doesn't contribute) when r=0.  
+Note: Because of the form of this equation, there is a cancellation that will not occur when $r=0$. To get the correct value in this case we must subtract $N^2$. Using this procedure we will recover the correct result that when $p=1$ the number of IO ops is $IO=N^3+3N^2$ and when $p=N$ (and you can store both matrices) $IO=4N^2$. The need to manually subtract $N^2$ when $r=0$ comes simply because there is a loop in my expression that is necessary for the calculation, but becomes invalid (that is it doesn't contribute) when r=0.  
 
-$$ \alpha = \frac{2N^3}{IO} = \frac{2N^3}{4N^2 + N^2\bigg\lfloor\frac{N}{p}\bigg\rfloor - N^2*[r==0]} = \frac{2N}{4+\bigg\lfloor\frac{N}{p}\bigg\rfloor - N^2*[r==0]}$$
+$$ \alpha = \frac{2N^3}{IO} = \frac{2N^3}{4N^2 + N^2\bigg\lfloor\frac{N}{p}\bigg\rfloor - N^2*[r==0]} = \frac{2N}{4+\bigg\lfloor\frac{N}{p}\bigg\rfloor - [r==0]}$$
 
 }
 
@@ -304,11 +304,23 @@ Calculate the arithmetic intensity of MMM with outer products when local memory 
 Here we use an IO-efficient scheme: we will finish computing an entire $\frac{N}{2} \times \frac{N}{2}$ submatrix of $C$ before writing it back to external memory and starting on the next sub-matrix.
 
 \solution{
-$$ \alpha = \frac{4((\frac{N}{2})^2 + (\frac{N}{2})^2)N} { \sum_{j=1}^4\bigg(
-2(\frac{N}{2})^2_{C_{read}} + \sum_{k=1}^N \big(\frac{N}{2}_{B_{read}} + \sum_{l=1}^{\frac{N}{2}} 1_{A_{read}} \big)
- \bigg)} = \frac{2N^3}{4(\frac{3}{2}N^2)}
-= \frac{N}{3} $$
 
+For the sake of generality I'm going to compute the result for an arbitrary square block size $l$, and a memory capacity $l^2+l+1$. We can then view the answer to this problem as simply the case where $l=\frac{N}{2}$. Once again to facilitate the calculation I will say: $N=lq+r$, where $l$ and $q$ are integers and $0\le r <l$. (I.e. $q$ and $r$ and are the quotient and remainder of $N/l$.)
+
+\begin{align*} 
+IO & = \sum^{q}\bigg( \sum^{q}\bigg(  2l^2_{C_{read/write}} + \sum^{N} \big(l_{B_{read}} + \sum^l 1_{A_{read}}\big)  \bigg) + 2rl_{C_{read/write}} +  \sum^N \big(l_{B_{read}} \sum^r 1_{A_{read}}\big) \bigg)  + \dots \\
+   & \;\;\;\;\;\;\;\; + \sum^q \bigg( 2lr_{C_{read}} + \sum^N \big( r_{B_{read}} + \sum^l 1_{A_{read}} \big) \bigg) + 2r^2_{C_{read}} + \sum^N (l_{B_{read}} + \sum^r 1_{A_{read}}) - 2N^2*[r==0] \\
+   & = 2q^2l^2 + 2Nq^2l + 2qrl + Nql + Nqr + 2qlr + Nqr + Nql + 2r^2 +2Nr - 2N^2*[r==0] \\
+   & = 2Nql + 2Nr + 2qlr + 2r^2 + 2q^2l^2 + 2qlr  + 2Nq^2l + 2Nqr -2N^2*[r==0]\\
+   & = 2N(ql+r) + 2r(ql+r) + 2ql(ql+r) + 2Nq(ql+r) -2N^2*[r==0]\\
+   & = 2N^2 + 2Nr + 2Nql + 2N^2q -2N^2*[r==0]\\
+   & = 2N^2 + 2N(ql+r) + 2N^2q- 2N^2*[r==0]\\
+   & = 4N^2 + 2N^2\bigg\lfloor \frac{N}{l} \bigg\rfloor - 2N^2*[r==0]
+\end{align*}
+
+$$ \alpha = \frac{2N^3} { IO } = \frac{2N^3}{4N^2 + 2N^2\big\lfloor\frac{N}{l} \big\rfloor - 2N^2*[r==0] } = \frac{N}{2 + \big\lfloor\frac{N}{l} \big\rfloor - [r==0] } $$
+
+Thus we see that when $l=\frac{N}{2}$, $\alpha=\frac{N}{3}$.
 }
 
 
@@ -319,14 +331,21 @@ That is, by what factor do the arithmetic intensity of inner and outer product M
 
 \solution{ 
 
-For both 3.1 and 3.3 the arithmetic intensity is $\alpha=\frac{3}{2}$. This means that the inner and outer product have the same $\alpha$ (for the algorithms chosen) when the local memory is big enough to hold one of the product matrices, an entire row/vector of the other matrix, and atleast one element of C. 
+For both 3.1 and 3.3 the arithmetic intensity is $\alpha=\frac{N}{2}$. This means that the inner and outer product have the same $\alpha$ (for the algorithms chosen) when the local memory is big enough to hold one of the product matrices, an entire row/vector of the other matrix, and atleast one element of C. This makes sense because in that cause, you don't have to worry about redundantely acessing one of the matrices.
+\\
 
-Now comparing 3.2 and 3.4 we see the arithmetic intensities are $\alpha=\frac{N}{4+\big\lfloor\frac{N}{p}\big\rfloor- N^2*[r==0]}$ and $\alpha=\frac{N}{3}$ respectively. The floor function in the expression for 3.2 is saying that increasing the block size $p$ only helps the arithmetic intensity when it decreases the total number of blocks that have to be loaded, and this only happens when the block-size $p$ hits the next-biggest factor of N as it increases. 
+Now comparing 3.2 and 3.4 we see the arithmetic intensities are $\alpha_{inner}=\frac{N}{4+\big\lfloor\frac{N}{p}\big\rfloor- [r==0]}$ and $\alpha_{outer}=\frac{N}{2 + \big\lfloor\frac{N}{l} \big\rfloor - [r==0] }$ respectively. 
+We can compare these expressions for a given memory by requiring that $2pN+1=l^2+l+1 \implies 2pN=l(l+1)$. The nicer looking way to satisfy this is to make $p=\frac{l(l+1}{2N}$. A plot of the arithmetic intensities for the block sizes when $p$ and $l$ are related this way is shown below. (N is selected to be $102$ so that $\frac{N+2}{8}=13$ and $\frac{N}{2}=51$ are integers.) 
 
-These two results in conjunction are saying that when memory is only big enough to hold a subset of the matrices, the outer-product does better. This is because the outer product does not require as many accesses to C. 
-This can be seen by setting $p=\frac{N+2}{8}$ and seeing that $\alpha$ for 3.2 becomes $\alpha=\frac{N}{4+\big\lfloor\frac{8N}{N+2}\big\rfloor- N^2*[r==0]}$. 
+\begin{figure}[H]
+    \includegraphics[width=0.85\linewidth]{figures/35_comp.png}
+    \centering
+    \caption{Comparison of blocking inner and outer product with constant amount of memory. Notice that both intensities approach N/2 as the block size approaches the size of the matrix, which is perfectly consistent with the results of 3.1/3.3. Also note that for the outer product, when the block size is N/2 the intensity is N/3=34 as expected. Similarly, when the block size for the inner product is (N+2)/8  we get the expected result.}
+\end{figure}
 
-Note that  $\frac{8N}{N+2}$ is larger than 2 for any N (6, 14, 22,...) such that N+2 is a multiple of 8, and so see that with the same memory the inner product doesn't have as high of an arithmetic intensity. This would be clearer if I had also derived the general expression for the outer-product in terms of a block size $p$. 
+We can immediately see that for the same amount of memory (when there is not enough memory to store the whole matrix), the outer product does better than the inner product. This is because the outer product has better IO properties.
+
+We also can see steps in intensities which represent the fact that increasing the block size  only helps the arithmetic intensity when it decreases the total number of blocks that have to be loaded, and this only happens when the block-size hits the next-biggest factor of N as it increases. Mathematically this is encoded in the floor functions.
 }
 
 \section{MMM Runtimes}
@@ -388,7 +407,7 @@ Does anything stand out or seem unusual?
     \caption{Timings for Part 4}
 \end{figure}
 
-We firstly see that the execution time grows  with respect to matrix size N. We also notice that the inner product times are offset by a constant (in log space) from the outer product times; this shows the relative in-efficiency of inner product MMM vs outer-product MMM, especially as the matrix size increases.   
+We firstly see that the execution time grows in an exponential seeming pattern with respect to matrix size N (given the samples we have, which show a straight line on a log plot.) We also notice that the inner product is has a worse baseline performance than the outer product, but with a similar growth pattern.   
 
 }
 
@@ -466,7 +485,7 @@ You may find graphs or equations useful in justifying your answer.
 
 Understanding these results requires remembering that increased $\alpha$ is not the same as decreased absolute computation time. 
 
-At small K, $\alpha$ is large and as K increase $\alpha$ slowly decreases. This makes intuitive sense as a small K corresponds to a smaller filter matrix to load, but a much larger amount of computations because the much bigger size of the data matrix. Also note the discrete downward jumps in $\alpha$ as K increases. These correspond to the fact that increasing K only changes the number of patches when K causes one less factor of S to fit into the matrix at which point the number of convolution patches jumps down and $\alpha$ decreases. 
+At small K, $\alpha$ is large and as K increases $\alpha$ decreases. This makes intuitive sense as a small K corresponds to a smaller filter matrix to load, but a much larger amount of computations because the much bigger size of the data matrix. Also note the discrete downward jumps in $\alpha$ as K increases. These correspond to the fact that increasing K only changes the number of patches when K causes one less factor of S to fit into the matrix at which point the number of convolution patches jumps down and $\alpha$ decreases. 
 
 The channel size I has a large effect on $\alpha$ at small K. Here, larger I corresponds to a larger computational intensity because the increased number of computations outweights the increased amount of IO. We can see this should be true because I multiplies O*P in the numerator but O and P individually in the denominator. However, as K increases the effect of I is diminished.
 
